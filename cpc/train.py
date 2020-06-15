@@ -348,6 +348,11 @@ def main(args):
             os.mkdir(args.pathCheckpoint)
         args.pathCheckpoint = os.path.join(args.pathCheckpoint, "checkpoint")
 
+        # Write args if not already written
+        if not os.path.isfile(args.pathCheckpoint + "_args.json"):
+            with open(args.pathCheckpoint + "_args.json", 'w') as file:
+                json.dump(vars(args), file, indent=2)
+
     scheduler = None
     if args.schedulerStep > 0:
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
