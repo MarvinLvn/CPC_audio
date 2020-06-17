@@ -261,7 +261,7 @@ def main(args):
 
     if args.pathVal is None:
         random.shuffle(seqTrain)
-        sizeTrain = int(0.99 * len(seqTrain))
+        sizeTrain = int(0.90 * len(seqTrain))
         seqTrain, seqVal = seqTrain[:sizeTrain], seqTrain[sizeTrain:]
         print(f'Found files: {len(seqTrain)} train, {len(seqVal)} val')
     else:
