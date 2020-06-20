@@ -176,7 +176,6 @@ class ABXFeatureLoader:
             features = features.view(features.size(1), features.size(2))
 
             phone_data = files_data[fileID]
-
             for phone_start, phone_end, context_id, phone_id, speaker_id in phone_data:
 
                 index_start = max(
@@ -195,7 +194,6 @@ class ABXFeatureLoader:
 
         bar.finish()
         print("...done")
-
         self.data = torch.cat(data, dim=0)
         self.feature_dim = self.data.size(1)
 
@@ -237,6 +235,9 @@ class ABXFeatureLoader:
 
     def get_n_sub_group(self, index_sub_group):
         return len(self.group_index[index_sub_group])
+
+    def get_phones(self):
+        return self.phone_match
 
     def get_iterator(self, mode, max_size_group):
         if mode == 'within':
@@ -338,6 +339,7 @@ class ABXWithinGroupIterator(ABXIterator):
                                                               i_end_a)
 
                         out_coords = id_a[2], id_a[1], id_b[1], id_a[0]
+
                         yield out_coords, (data_a, size_a), (data_b, size_b), \
                             (data_a, size_a)
 
