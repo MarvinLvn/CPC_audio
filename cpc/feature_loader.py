@@ -9,18 +9,17 @@ import json
 import argparse
 from .cpc_default_config import get_default_cpc_config
 from .dataset import parseSeqLabels
-from .model import CPCModel, ConcatenatedModel
+from .model import CPCModel, ConcatenatedModel, VQwav2vec
 
 
 class FeatureModule(torch.nn.Module):
     r"""
-    A simpler interface to handle CPC models. Useful for a smooth workflow when
-    working with CPC trained features.
+    A simpler interface to handle CPC or VQwav2vec (fairseq) models.
     """
 
-    def __init__(self, featureMaker, get_encoded, collapse=False):
+    def __init__(self, featureMaker, which_features, collapse=False):
         super(FeatureModule, self).__init__()
-        self.get_encoded = get_encoded
+        self.which_features = which_features
         self.featureMaker = featureMaker
         self.collapse = collapse
 
@@ -30,11 +29,22 @@ class FeatureModule(torch.nn.Module):
     def forward(self, data):
 
         batchAudio, label = data
-        cFeature, encoded, _ = self.featureMaker(batchAudio.cuda(), label)
-        if self.get_encoded:
+
+        if isinstance(self.featureMaker, CPCModel):
+            cFeature, encoded, _ = self.featureMaker(batchAudio.cuda(), label)
+        elif isinstance(self.featureMaker, VQwav2vec):
+            idxs, cFeature, encoded, _ = self.featureMaker(batchAudio.cuda(), label)
+
+        if self.which_features == 'encoder':
             cFeature = encoded
+        elif self.which_features == 'aggregator':
+            cFeature = cFeature
+        elif self.which_features == 'both':
+            cFeature = torch.cat([encoded, cFeature], dim=2)
+
         if self.collapse:
             cFeature = cFeature.contiguous().view(-1, cFeature.size(2))
+
         return cFeature
 
 
@@ -153,35 +163,38 @@ def getAR(args):
     return arNet
 
 
-def loadModel(pathCheckpoints, loadStateDict=True):
+def loadModel(pathCheckpoints, loadStateDict=True, fairSeqMode=False):
     models = []
     hiddenGar, hiddenEncoder = 0, 0
     for path in pathCheckpoints:
         print(f"Loading checkpoint {path}")
-        _, _, locArgs = getCheckpointData(os.path.dirname(path))
+        if not fairSeqMode:
+            _, _, locArgs = getCheckpointData(os.path.dirname(path))
 
-        doLoad = locArgs.load is not None and \
-            (len(locArgs.load) > 1 or
-             os.path.dirname(locArgs.load[0]) != os.path.dirname(path))
+            doLoad = locArgs.load is not None and \
+                (len(locArgs.load) > 1 or
+                 os.path.dirname(locArgs.load[0]) != os.path.dirname(path))
 
-        if doLoad:
-            m_, hg, he = loadModel(locArgs.load, loadStateDict=False)
-            hiddenGar += hg
-            hiddenEncoder += he
+            if doLoad:
+                m_, hg, he = loadModel(locArgs.load, loadStateDict=False)
+                hiddenGar += hg
+                hiddenEncoder += he
+            else:
+                encoderNet = getEncoder(locArgs)
+
+                arNet = getAR(locArgs)
+                m_ = CPCModel(encoderNet, arNet)
+
+            if loadStateDict:
+                print(f"Loading the state dict at {path}")
+                state_dict = torch.load(path, 'cpu')
+                m_.load_state_dict(state_dict["gEncoder"], strict=False)
+            if not doLoad:
+                hiddenGar += locArgs.hiddenGar
+                hiddenEncoder += locArgs.hiddenEncoder
+
         else:
-            encoderNet = getEncoder(locArgs)
-
-            arNet = getAR(locArgs)
-            m_ = CPCModel(encoderNet, arNet)
-
-        if loadStateDict:
-            print(f"Loading the state dict at {path}")
-            state_dict = torch.load(path, 'cpu')
-            m_.load_state_dict(state_dict["gEncoder"], strict=False)
-        if not doLoad:
-            hiddenGar += locArgs.hiddenGar
-            hiddenEncoder += locArgs.hiddenEncoder
-
+            m_ = VQwav2vec(path)
         models.append(m_)
 
     if len(models) == 1:

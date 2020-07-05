@@ -5,6 +5,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 import torchaudio
+from fairseq.models.wav2vec import Wav2VecModel
 
 import torch
 
@@ -288,6 +289,33 @@ class CPCModel(nn.Module):
         cFeature = self.gAR(encodedData)
         return cFeature, encodedData, label
 
+class VQwav2vec(nn.Module):
+
+    def __init__(self, checkpoint_path):
+        super(VQwav2vec, self).__init__()
+        self.cp = torch.load(checkpoint_path)
+
+        # Initialize architecture
+        self.model = Wav2VecModel.build_model(self.cp['args'], task=None)
+        # Load weights
+        self.model.load_state_dict(self.cp['model'])
+
+        self.gEncoder = self.model._modules['feature_extractor']
+        self.gAR = self.model._modules['feature_aggregator']
+        self.gVQ = self.model._modules['vector_quantizer']
+        self.gEncoder.DOWNSAMPLING = 160
+
+    def forward(self, batchData, label):
+        batchData = batchData.view(1, -1)
+        encodedData = self.gEncoder(batchData)
+        cFeature = self.gAR(encodedData)
+        _, idxs = self.gVQ.forward_idx(encodedData)
+        # To ensure compatiblity with previous state of the code
+        # where the dim is expected to be [n_examples, n_features, n_channels]
+        encodedData = encodedData.transpose(1, 2)
+        cFeature = cFeature.transpose(1,2)
+
+        return idxs, cFeature, encodedData, label
 
 class ConcatenatedModel(nn.Module):
 
@@ -297,12 +325,21 @@ class ConcatenatedModel(nn.Module):
         self.models = torch.nn.ModuleList(model_list)
 
     def forward(self, batchData, label):
-
         outFeatures = []
         outEncoded = []
+        outIdxs = []
         for model in self.models:
-            cFeature, encodedData, label = model(batchData, label)
+            if isinstance(model, CPCModel):
+                cFeature, encodedData, label = model(batchData, label)
+            elif isinstance(model, VQwav2vec):
+                idxs, cFeature, encodedData, label = model(batchData, label)
+                outIdxs.append(idxs)
             outFeatures.append(cFeature)
             outEncoded.append(encodedData)
-        return torch.cat(outFeatures, dim=2), \
-            torch.cat(outEncoded, dim=2), label
+        if len(outIdxs) == 0:
+            return torch.cat(outFeatures, dim=2), \
+                torch.cat(outEncoded, dim=2), label
+        else:
+            return torch.cat(outFeatures, dim=2), \
+                   torch.cat(outEncoded, dim=2), \
+                   torch.cat(outIdxs, dim=2), label

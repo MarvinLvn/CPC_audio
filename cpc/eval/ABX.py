@@ -101,7 +101,7 @@ def ABX(feature_function,
 
 def update_base_parser(parser):
     parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--feature_size', type=int, default=0.01,
+    parser.add_argument('--feature_size', type=float, default=0.01,
                         help="Size (in s) of one feature")
     parser.add_argument('--cuda', action='store_true',
                         help="Use the GPU to compute distances")
@@ -136,6 +136,9 @@ def parse_args(argv):
                                    help='If activated, normalize each batch '
                                    'of feature across the time channel before '
                                    'computing ABX.')
+    parser_checkpoint.add_argument('--fairseq', action='store_true',
+                                   help='If activated, the code will expect to receive'
+                                        ' a fairseq vq-wav2vec model')
     parser_checkpoint.add_argument('--max_size_seq', default=64000, type=int,
                                    help='Maximal number of frames to consider '
                                    'when computing a batch of features.')
@@ -144,11 +147,12 @@ def parse_args(argv):
                                    'will contain exactly max_size_seq frames.')
     parser_checkpoint.add_argument('--file_extension', type=str,
                                    default='.wav',
-                                   help='Extension of ecah audio file in the '
+                                   help='Extension of each audio file in the '
                                    'dataset.')
-    parser_checkpoint.add_argument('--get_encoded', action='store_true',
-                                   help='If activated, compute the ABX score '
-                                   'using the output of the encoder network.')
+    parser_checkpoint.add_argument('--which_features', type=str, default='aggregator', choices=['encoder', 'aggregator', 'both'],
+                                   help='Features to use. Encoder will only extract encoder features, '
+                                        'aggregator will only extract aggregator features '
+                                        'and both will concatenate both.')
 
     parser_db = subparsers.add_parser('from_pre_computed')
     update_base_parser(parser_db)
@@ -157,7 +161,6 @@ def parse_args(argv):
     parser_db.add_argument('--file_extension', type=str,
                            default='.pt', help='Extension of each feature '
                            'in the dataset')
-
     # multi-gpu / multi-node
     return base_parser.parse_args(argv)
 
@@ -169,10 +172,10 @@ def main(argv):
     if args.load == 'from_checkpoint':
         # Checkpoint
         epoch = Path(args.path_checkpoint).stem.replace('checkpoint_', '')
-        model = loadModel([args.path_checkpoint])[0]
+        model = loadModel([args.path_checkpoint], fairSeqMode = args.fairseq)[0]
         model.gAR.keepHidden = True
         # Feature maker
-        feature_maker = FeatureModule(model, args.get_encoded).cuda().eval()
+        feature_maker = FeatureModule(model, args.which_features).cuda().eval()
 
         def feature_function(x): return buildFeature(feature_maker, x,
                                                      seqNorm=args.seq_norm,
