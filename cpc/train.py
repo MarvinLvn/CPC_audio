@@ -21,7 +21,7 @@ from cpc.cpc_default_config import set_default_cpc_config
 from cpc.dataset import AudioBatchData, findAllSeqs, filterSeqs, parseSeqLabels
 
 # Avoid getting the RuntimError : received 0 items from of ancdata
-torch.multiprocessing.set_sharing_strategy('file_system')
+#torch.multiprocessing.set_sharing_strategy('file_system')
 
 def getCriterion(args, downsampling, nSpeakers, nPhones):
     dimFeatures = args.hiddenGar if not args.onEncoder else args.hiddenEncoder
@@ -496,6 +496,6 @@ def parseArgs(argv):
 
 
 if __name__ == "__main__":
-    torch.multiprocessing.set_start_method('spawn')
+    torch.multiprocessing.set_start_method('spawn', force=True)
     args = sys.argv[1:]
     main(args)
