@@ -467,7 +467,7 @@ def findAllSeqs(dirName,
     prefixSize = len(dirName)
     speakersTarget = {}
     outSequences = []
-    for root, dirs, filenames in tqdm.tqdm(os.walk(dirName)):
+    for root, dirs, filenames in tqdm.tqdm(os.walk(dirName, followlinks=True)):
         filtered_files = [f for f in filenames if f.endswith(extension)]
 
         if len(filtered_files) > 0:
